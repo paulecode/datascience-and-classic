@@ -1,5 +1,10 @@
 # This program takes a midi, quickly describes it and converts it to CSV
 
+# Refactor ideas
+# Split parse and export function
+# Message Dict one level higher
+#
+
 # Imports
 
 import os
@@ -19,9 +24,11 @@ def convert_to_csv(filename):
 
     mid = mido.MidiFile(filename)
     filename = filename[:-4]
-    os.makedirs('output/' + filename)
+    os.makedirs('output/' + filename, exist_ok=True)
 
     meta_data_list = []
+    note_list = []
+
     for track_index, track in enumerate(mid.tracks):
         absolute_time = 0
         for message_index, message in enumerate(track):
@@ -48,10 +55,26 @@ def convert_to_csv(filename):
                         meta_data_list.append([
                             track_index, absolute_time, f"{message.type}_{key}", value
                         ])
-                meta_frame = pd.DataFrame(meta_data_list, columns=[
-                                          'track', 'time', 'key', 'value'])
-                meta_frame.to_csv(
-                    f"output/{filename}/{filename}.csv", index=False)
+            elif message.type == 'control_change':
+                if 'control=64' in str(message):
+                    meta_message = message.dict()
+                    meta_data_list.append([
+                        track_index, absolute_time, 'pedal', meta_message['value']
+                    ])
+            elif message.type == 'note_on' or message.type == 'note_off':
+                meta_message = message.dict()
+                note_list.append([
+                    track_index, absolute_time, message.type, meta_message[
+                        'note'], meta_message['velocity']
+                ])
+            note_frame = pd.DataFrame(
+                note_list, columns=['track', 'time', 'type', 'note', 'velocity'])
+            meta_frame = pd.DataFrame(meta_data_list, columns=[
+                'track', 'time', 'key', 'value'])
+            note_frame.to_csv(
+                f"output/{filename}/{filename}_note.csv", index=False)
+            meta_frame.to_csv(
+                f"output/{filename}/{filename}_meta.csv", index=False)
 
 
 if __name__ == "__main__":
